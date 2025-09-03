@@ -270,7 +270,16 @@ def config_check(ctx):
     click.echo("Configuration Check:")
     click.echo(f"  Crusoe API URL: {config.crusoe.base_url}")
     click.echo(f"  Crusoe Org ID: {config.crusoe.organization_id}")
-    click.echo(f"  Crusoe API Token: {'✅ Set' if config.crusoe.api_token else '❌ Missing'}")
+    
+    # Show authentication method being used
+    if config.crusoe.api_token:
+        click.echo(f"  Crusoe Auth: Bearer Token ({'✅ Set' if config.crusoe.api_token else '❌ Missing'})")
+    elif config.crusoe.access_key_id and config.crusoe.secret_access_key:
+        click.echo(f"  Crusoe Auth: Access Key ({'✅ Set' if config.crusoe.access_key_id else '❌ Missing'})")
+        click.echo(f"  Crusoe Region: {config.crusoe.region}")
+    else:
+        click.echo(f"  Crusoe Auth: ❌ No authentication configured")
+    
     click.echo(f"  Splunk HEC URL: {config.splunk.hec_url}")
     click.echo(f"  Splunk HEC Token: {'✅ Set' if config.splunk.hec_token else '❌ Missing'}")
     click.echo(f"  Splunk Index: {config.splunk.index or 'Default'}")

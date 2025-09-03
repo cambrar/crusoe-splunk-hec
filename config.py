@@ -12,20 +12,28 @@ load_dotenv()
 class CrusoeConfig(BaseModel):
     """Configuration for Crusoe Cloud API."""
     
-    api_token: str = Field(..., description="Crusoe Cloud API token")
+    # Support both token-based and key-based authentication
+    api_token: Optional[str] = Field(default=None, description="Crusoe Cloud API token (legacy)")
+    access_key_id: Optional[str] = Field(default=None, description="Crusoe Cloud access key ID")
+    secret_access_key: Optional[str] = Field(default=None, description="Crusoe Cloud secret access key")
+    
     base_url: str = Field(
         default="https://api.crusoecloud.com/v1alpha5",
         description="Crusoe Cloud API base URL"
     )
     organization_id: str = Field(..., description="Organization ID for audit logs")
+    region: str = Field(default="us-east-1", description="AWS region for signing requests")
     
     @classmethod
     def from_env(cls) -> "CrusoeConfig":
         """Create configuration from environment variables."""
         return cls(
-            api_token=os.getenv("CRUSOE_API_TOKEN", ""),
+            api_token=os.getenv("CRUSOE_API_TOKEN"),
+            access_key_id=os.getenv("CRUSOE_ACCESS_KEY_ID"),
+            secret_access_key=os.getenv("CRUSOE_SECRET_ACCESS_KEY"),
             base_url=os.getenv("CRUSOE_BASE_URL", "https://api.crusoecloud.com/v1alpha5"),
-            organization_id=os.getenv("CRUSOE_ORG_ID", "")
+            organization_id=os.getenv("CRUSOE_ORG_ID", ""),
+            region=os.getenv("CRUSOE_REGION", "us-east-1")
         )
 
 
@@ -74,8 +82,16 @@ class AppConfig(BaseModel):
     
     def validate_config(self) -> None:
         """Validate that all required configuration is present."""
-        if not self.crusoe.api_token:
-            raise ValueError("CRUSOE_API_TOKEN environment variable is required")
+        # Check Crusoe authentication - either token OR access key + secret
+        has_token = bool(self.crusoe.api_token)
+        has_keys = bool(self.crusoe.access_key_id and self.crusoe.secret_access_key)
+        
+        if not has_token and not has_keys:
+            raise ValueError(
+                "Crusoe authentication required: either CRUSOE_API_TOKEN or "
+                "(CRUSOE_ACCESS_KEY_ID + CRUSOE_SECRET_ACCESS_KEY) must be provided"
+            )
+        
         if not self.crusoe.organization_id:
             raise ValueError("CRUSOE_ORG_ID environment variable is required")
         if not self.splunk.hec_token:

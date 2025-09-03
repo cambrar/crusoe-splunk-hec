@@ -37,7 +37,18 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
 ### Required Environment Variables
 
 #### Crusoe Cloud API
+
+**Authentication Options** (choose one):
+
+**Option 1: Access Key Authentication (Recommended)**
+- `CRUSOE_ACCESS_KEY_ID`: Your Crusoe Cloud access key ID
+- `CRUSOE_SECRET_ACCESS_KEY`: Your Crusoe Cloud secret access key
+- `CRUSOE_REGION`: AWS region for request signing (default: `us-east-1`)
+
+**Option 2: Token Authentication (Legacy)**
 - `CRUSOE_API_TOKEN`: Your Crusoe Cloud API token
+
+**Common Configuration**
 - `CRUSOE_ORG_ID`: Your organization ID for audit logs
 - `CRUSOE_BASE_URL`: API base URL (default: `https://api.crusoecloud.com/v1alpha5`)
 
@@ -56,10 +67,29 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
 
 ### Getting Crusoe API Credentials
 
+#### Access Key and Secret Key (Recommended)
+
+1. **Access Keys**: 
+   - Log into [Crusoe Cloud Console](https://console.crusoecloud.com)
+   - Navigate to Settings > Access Keys or API Keys
+   - Create a new access key pair
+   - Copy both the Access Key ID and Secret Access Key
+
+2. **Environment Setup**:
+   ```bash
+   # Add to your .env file
+   CRUSOE_ACCESS_KEY_ID=your_access_key_id_here
+   CRUSOE_SECRET_ACCESS_KEY=your_secret_access_key_here
+   ```
+
+#### API Token (Legacy Alternative)
+
 1. **API Token**: 
    - Log into [Crusoe Cloud Console](https://console.crusoecloud.com)
    - Navigate to Settings > API Tokens
    - Create a new token with appropriate permissions
+
+#### Organization ID
 
 2. **Organization ID**:
    - Available in the Crusoe Cloud Console

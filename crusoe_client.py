@@ -7,6 +7,10 @@ from typing import Dict, List, Optional, Any
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
+from botocore.credentials import Credentials
+from urllib.parse import urlparse
 
 from config import CrusoeConfig
 
@@ -46,14 +50,62 @@ class CrusoeClient:
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         
-        # Set default headers
+        # Set default headers (authentication will be handled per-request)
         session.headers.update({
-            "Authorization": f"Bearer {self.config.api_token}",
             "Content-Type": "application/json",
             "User-Agent": "crusoe-splunk-hec/1.0"
         })
         
         return session
+    
+    def _sign_request(self, method: str, url: str, params: Optional[Dict] = None, data: Optional[str] = None) -> Dict[str, str]:
+        """Sign a request using AWS Signature Version 4 or Bearer token.
+        
+        Args:
+            method: HTTP method
+            url: Request URL
+            params: Query parameters
+            data: Request body
+            
+        Returns:
+            Dictionary of headers to add to the request
+        """
+        headers = {}
+        
+        # If we have an API token, use Bearer authentication
+        if self.config.api_token:
+            headers["Authorization"] = f"Bearer {self.config.api_token}"
+            return headers
+        
+        # If we have access keys, use AWS SigV4 authentication
+        if self.config.access_key_id and self.config.secret_access_key:
+            # Create AWS credentials
+            credentials = Credentials(
+                access_key=self.config.access_key_id,
+                secret_key=self.config.secret_access_key
+            )
+            
+            # Parse URL to get host and path
+            parsed_url = urlparse(url)
+            
+            # Create AWS request object
+            aws_request = AWSRequest(
+                method=method,
+                url=url,
+                data=data,
+                params=params,
+                headers=headers.copy()
+            )
+            
+            # Sign the request
+            signer = SigV4Auth(credentials, "crusoe", self.config.region)
+            signer.add_auth(aws_request)
+            
+            # Return the authorization header
+            return dict(aws_request.headers)
+        
+        # No authentication configured
+        return headers
     
     def get_audit_logs(
         self,
@@ -96,7 +148,12 @@ class CrusoeClient:
         
         try:
             logger.info(f"Fetching audit logs from {url} with params: {params}")
-            response = self.session.get(url, params=params, timeout=30)
+            
+            # Sign the request
+            auth_headers = self._sign_request("GET", url, params=params)
+            headers = {**self.session.headers, **auth_headers}
+            
+            response = self.session.get(url, params=params, headers=headers, timeout=30)
             response.raise_for_status()
             
             data = response.json()
