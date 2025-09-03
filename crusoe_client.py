@@ -2,15 +2,15 @@
 
 import logging
 import time
+import hmac
+import hashlib
+import base64
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
-from botocore.credentials import Credentials
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode
 
 from config import CrusoeConfig
 
@@ -59,7 +59,7 @@ class CrusoeClient:
         return session
     
     def _sign_request(self, method: str, url: str, params: Optional[Dict] = None, data: Optional[str] = None) -> Dict[str, str]:
-        """Sign a request using AWS Signature Version 4 or Bearer token.
+        """Sign a request using Crusoe Cloud's custom signature method or Bearer token.
         
         Args:
             method: HTTP method
@@ -77,35 +77,71 @@ class CrusoeClient:
             headers["Authorization"] = f"Bearer {self.config.api_token}"
             return headers
         
-        # If we have access keys, use AWS SigV4 authentication
+        # If we have access keys, use Crusoe's custom signature method
         if self.config.access_key_id and self.config.secret_access_key:
-            # Create AWS credentials
-            credentials = Credentials(
-                access_key=self.config.access_key_id,
-                secret_key=self.config.secret_access_key
-            )
-            
-            # Parse URL to get host and path
-            parsed_url = urlparse(url)
-            
-            # Create AWS request object
-            aws_request = AWSRequest(
-                method=method,
-                url=url,
-                data=data,
-                params=params,
-                headers=headers.copy()
-            )
-            
-            # Sign the request
-            signer = SigV4Auth(credentials, "crusoe", self.config.region)
-            signer.add_auth(aws_request)
-            
-            # Return the authorization header
-            return dict(aws_request.headers)
+            return self._create_crusoe_signature(method, url, params, data)
         
         # No authentication configured
         return headers
+    
+    def _create_crusoe_signature(self, method: str, url: str, params: Optional[Dict] = None, data: Optional[str] = None) -> Dict[str, str]:
+        """Create Crusoe Cloud API signature according to their documentation.
+        
+        Args:
+            method: HTTP method
+            url: Request URL
+            params: Query parameters
+            data: Request body
+            
+        Returns:
+            Dictionary of headers including Authorization and X-Crusoe-Timestamp
+        """
+        # Parse URL to get the path
+        parsed_url = urlparse(url)
+        http_path = parsed_url.path
+        
+        # Canonicalize query parameters
+        if params:
+            # Sort parameters by name and format as key=value&key=value
+            sorted_params = sorted(params.items())
+            canonicalized_query_params = "&".join([f"{k}={v}" for k, v in sorted_params])
+        else:
+            canonicalized_query_params = ""
+        
+        # Create timestamp in RFC3339 format
+        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        
+        # Create signature payload as per Crusoe documentation:
+        # http_path + "\n" + canonicalized_query_params + "\n" + http_verb + "\n" + timestamp + "\n"
+        payload = f"{http_path}\n{canonicalized_query_params}\n{method}\n{timestamp}\n"
+        
+        # Decode the secret key from base64
+        try:
+            # Add padding if needed for base64 decoding
+            secret_key_padded = self.config.secret_access_key + '=' * (-len(self.config.secret_access_key) % 4)
+            decoded_secret = base64.urlsafe_b64decode(secret_key_padded)
+        except Exception as e:
+            logger.error(f"Failed to decode secret key: {e}")
+            raise CrusoeAPIError(f"Invalid secret key format: {e}")
+        
+        # Create HMAC-SHA256 signature
+        signature_bytes = hmac.new(
+            decoded_secret,
+            payload.encode('ascii'),
+            hashlib.sha256
+        ).digest()
+        
+        # Base64 encode the signature (without padding)
+        signature = base64.urlsafe_b64encode(signature_bytes).decode('ascii').rstrip("=")
+        
+        # Create authorization header: Bearer version:access_key_id:signature
+        signature_version = "1.0"
+        auth_value = f"{signature_version}:{self.config.access_key_id}:{signature}"
+        
+        return {
+            "X-Crusoe-Timestamp": timestamp,
+            "Authorization": f"Bearer {auth_value}"
+        }
     
     def get_audit_logs(
         self,
