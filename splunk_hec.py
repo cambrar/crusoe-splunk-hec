@@ -1,6 +1,5 @@
 """Splunk HTTP Event Collector client for sending audit logs."""
 
-import hashlib
 import json
 import logging
 import time
@@ -82,24 +81,12 @@ class SplunkHECClient:
         if timestamp is None:
             timestamp = time.time()
         
-        # Generate unique event ID for automatic deduplication
-        # Use key audit log fields to create a deterministic unique identifier
-        unique_fields = [
-            log_entry.get('start_time', ''),
-            log_entry.get('actor_id', ''),
-            log_entry.get('action', ''),
-            log_entry.get('target_type', ''),
-            log_entry.get('organization_id', ''),
-        ]
-        event_id = hashlib.md5(''.join(unique_fields).encode()).hexdigest()
-        
         # Build the Splunk event
         event = {
             "time": timestamp,
             "event": log_entry,
             "sourcetype": self.config.sourcetype,
-            "source": self.config.source,
-            "id": event_id  # Splunk automatically deduplicates based on this ID
+            "source": self.config.source
         }
         
         # Add index if specified

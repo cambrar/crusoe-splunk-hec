@@ -2,33 +2,16 @@
 
 This document outlines approaches to eliminate duplicate audit logs that may occur due to the 30-second overlap window in daemon mode.
 
-## 🔧 **Implemented Solution: Splunk HEC Event ID**
+## 🚫 **Attempted Solution: Splunk HEC Event ID** 
 
-**Status: ✅ IMPLEMENTED**
+**Status: ❌ INCOMPATIBLE**
 
-The application automatically generates unique event IDs for each audit log entry using a deterministic hash of key fields:
+**Issue discovered:** The Splunk HEC `"id"` field format attempted is not compatible with Splunk Cloud.
+- Causes "No data" error (code 5) from Splunk HEC
+- Events are rejected even with valid JSON formatting
+- Splunk HEC event ID deduplication works differently than expected
 
-- `start_time` - When the action started
-- `actor_id` - Who performed the action  
-- `action` - What action was performed
-- `target_type` - Type of resource affected
-- `organization_id` - Organization context
-
-**How it works:**
-1. Each event gets a unique `id` field in the Splunk HEC payload
-2. Splunk automatically deduplicates events with the same ID
-3. No duplicate events are stored, even if sent multiple times
-
-**Example event with ID:**
-```json
-{
-  "time": 1693737063.941,
-  "event": { ... audit log data ... },
-  "sourcetype": "crusoe:audit",
-  "source": "crusoe_api",
-  "id": "a1b2c3d4e5f6789..." 
-}
-```
+**Currently using:** 30-second overlap with alternative deduplication strategies below.
 
 ## 🔍 **Alternative Solutions**
 
@@ -81,20 +64,20 @@ Create a data model that automatically deduplicates based on event characteristi
 
 | Method | Duplicates Stored | App Complexity | Storage Impact | Real-time |
 |--------|------------------|----------------|----------------|-----------|
-| **HEC Event ID** ✅ | None | Low | None | Yes |
+| **30s Overlap** ⚠️ | Few duplicates | Low | Minimal | Yes |
 | Local State | None | High | None | Yes |
 | Database State | None | High | Low | Yes |
 | Search-time Dedup | All duplicates | None | High | No |
 
-## ✅ **Recommendation**
+## ✅ **Current Recommendation**
 
-**Use the implemented HEC Event ID solution** because:
+**Use 30-second overlap with search-time deduplication** because:
 
-1. **Zero duplicate storage** - Splunk automatically prevents duplicates
-2. **No additional complexity** - Built into Splunk HEC protocol
-3. **Real-time deduplication** - Works immediately as events arrive
-4. **No state management** - Stateless, no persistence needed
-5. **Performance efficient** - MD5 hash is fast and deterministic
+1. **Reliable data ingestion** - Compatible with Splunk Cloud HEC
+2. **Simple implementation** - No complex event ID handling
+3. **Guaranteed completeness** - 30s overlap ensures no missed logs
+4. **Minimal duplicates** - Only 30s worth of potential overlap
+5. **Easy cleanup** - Use Splunk search-time dedup for analysis
 
 ## 🧪 **Testing Deduplication**
 
