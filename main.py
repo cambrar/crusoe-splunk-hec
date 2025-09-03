@@ -236,19 +236,51 @@ def forward_range(ctx, start_time, end_time, dry_run):
 
 @cli.command()
 @click.option('--interval', default=300, help='Interval between runs in seconds (default: 5 minutes)')
-@click.option('--hours', default=1, help='Number of hours back to fetch logs each run')
+@click.option('--lookback', default=600, help='Initial lookback period in seconds (default: 10 minutes)')
 @click.pass_context
-def daemon(ctx, interval, hours):
-    """Run in daemon mode, continuously forwarding logs."""
+def daemon(ctx, interval, lookback):
+    """Run in daemon mode, continuously forwarding logs.
+    
+    On first run, fetches logs from the last 'lookback' seconds.
+    On subsequent runs, fetches only logs since the last successful run to prevent duplicates.
+    """
     forwarder = ctx.obj['forwarder']
     
     logger.info(f"Starting daemon mode: forwarding logs every {interval} seconds")
+    logger.info(f"Initial lookback period: {lookback} seconds")
+    
+    last_run_time = None
     
     while True:
         try:
             logger.info("Starting log forwarding cycle...")
-            sent_count = forwarder.forward_recent_logs(hours=hours)
+            
+            # Calculate time range for this run
+            end_time = datetime.now(timezone.utc)
+            
+            if last_run_time is None:
+                # First run: use lookback period
+                start_time = end_time - timedelta(seconds=lookback)
+                logger.info(f"First run: fetching logs from last {lookback} seconds")
+            else:
+                # Subsequent runs: fetch since last successful run with small overlap
+                # Add 30 seconds overlap to ensure we don't miss logs due to timing
+                start_time = last_run_time - timedelta(seconds=30)
+                logger.info(f"Fetching logs since last run (with 30s overlap)")
+            
+            logger.info(f"Time range: {start_time} to {end_time}")
+            
+            # Forward logs for the calculated time range
+            sent_count = forwarder.forward_logs(
+                start_time=start_time,
+                end_time=end_time,
+                dry_run=False
+            )
+            
             logger.info(f"Forwarding cycle completed: {sent_count} logs sent")
+            
+            # Update last run time only on successful completion
+            last_run_time = end_time
             
         except KeyboardInterrupt:
             logger.info("Daemon mode interrupted by user")
@@ -256,6 +288,7 @@ def daemon(ctx, interval, hours):
         except Exception as e:
             logger.error(f"Error in daemon cycle: {str(e)}")
             # Continue running even if one cycle fails
+            # Don't update last_run_time on failure to retry the same period
         
         logger.info(f"Sleeping for {interval} seconds...")
         time.sleep(interval)

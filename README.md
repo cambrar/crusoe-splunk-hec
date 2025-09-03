@@ -149,10 +149,11 @@ python main.py forward-range --start-time "2024-01-01T00:00:00Z" --dry-run
 #### Daemon Mode (Continuous Operation)
 ```bash
 # Run continuously, forwarding logs every 5 minutes (300 seconds)
+# Initial lookback of 10 minutes, then only new logs since last run
 python main.py daemon
 
-# Custom interval and lookback period
-python main.py daemon --interval 600 --hours 2
+# Custom interval and initial lookback period
+python main.py daemon --interval 600 --lookback 1800
 ```
 
 ### Example Workflow
@@ -177,8 +178,8 @@ python main.py daemon --interval 600 --hours 2
 
 3. **Continuous Operation**:
    ```bash
-   # Run as a daemon, checking every 10 minutes
-   python main.py daemon --interval 600 --hours 1
+   # Run as a daemon, checking every 10 minutes with 30 minute initial lookback
+   python main.py daemon --interval 600 --lookback 1800
    ```
 
 ## Log Format
@@ -252,7 +253,7 @@ Type=simple
 User=your-user
 WorkingDirectory=/path/to/cursor-splunk-hec
 Environment=PATH=/path/to/venv/bin
-ExecStart=/path/to/venv/bin/python main.py daemon --interval 300 --hours 1
+ExecStart=/path/to/venv/bin/python main.py daemon --interval 300 --lookback 900
 Restart=always
 RestartSec=10
 
