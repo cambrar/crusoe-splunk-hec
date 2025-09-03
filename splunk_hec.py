@@ -152,7 +152,7 @@ class SplunkHECClient:
         self,
         log_entries: List[Dict[str, Any]],
         batch_size: int = 100
-    ) -> int:
+    ) -> tuple[int, List[Dict[str, Any]]]:
         """Send audit log entries to Splunk HEC in batches.
         
         Args:
@@ -160,12 +160,13 @@ class SplunkHECClient:
             batch_size: Number of events to send in each batch
             
         Returns:
-            Number of successfully sent events
+            Tuple of (number_of_successfully_sent_events, list_of_successfully_sent_events)
         """
         if not log_entries:
-            return 0
+            return 0, []
         
         total_sent = 0
+        successfully_sent_events = []
         total_batches = (len(log_entries) + batch_size - 1) // batch_size
         
         for i in range(0, len(log_entries), batch_size):
@@ -176,6 +177,7 @@ class SplunkHECClient:
                 logger.info(f"Sending batch {batch_num}/{total_batches} ({len(batch)} events)")
                 self.send_events(batch)
                 total_sent += len(batch)
+                successfully_sent_events.extend(batch)
                 
                 # Small delay between batches to avoid overwhelming Splunk
                 if batch_num < total_batches:
@@ -187,7 +189,7 @@ class SplunkHECClient:
                 continue
         
         logger.info(f"Successfully sent {total_sent}/{len(log_entries)} events to Splunk")
-        return total_sent
+        return total_sent, successfully_sent_events
     
     def health_check(self) -> bool:
         """Check if Splunk HEC is accessible.

@@ -10,6 +10,7 @@ import click
 from config import AppConfig
 from crusoe_client import CrusoeClient, CrusoeAPIError
 from splunk_hec import SplunkHECClient, SplunkHECError
+from deduplicator import EventDeduplicator
 
 # Configure logging
 logging.basicConfig(
@@ -27,15 +28,17 @@ logger = logging.getLogger(__name__)
 class LogForwarder:
     """Main class for forwarding Crusoe audit logs to Splunk HEC."""
     
-    def __init__(self, config: AppConfig):
+    def __init__(self, config: AppConfig, deduplicator: Optional[EventDeduplicator] = None):
         """Initialize the log forwarder.
         
         Args:
             config: Application configuration
+            deduplicator: Optional event deduplicator
         """
         self.config = config
         self.crusoe_client = CrusoeClient(config.crusoe)
         self.splunk_client = SplunkHECClient(config.splunk)
+        self.deduplicator = deduplicator
     
     def health_check(self) -> bool:
         """Perform health checks on both Crusoe API and Splunk HEC.
@@ -89,6 +92,17 @@ class LogForwarder:
             
             logger.info(f"Retrieved {len(logs)} audit logs")
             
+            # Apply deduplication if enabled
+            if self.deduplicator:
+                original_count = len(logs)
+                logs = self.deduplicator.filter_duplicates(logs)
+                if len(logs) < original_count:
+                    logger.info(f"Deduplication: {original_count} -> {len(logs)} events ({original_count - len(logs)} duplicates filtered)")
+            
+            if not logs:
+                logger.info("No unique logs to forward after deduplication")
+                return 0
+            
             if dry_run:
                 logger.info("Dry run mode - not sending logs to Splunk")
                 for i, log in enumerate(logs[:5]):  # Show first 5 logs
@@ -97,10 +111,15 @@ class LogForwarder:
             
             # Send logs to Splunk HEC
             logger.info("Sending logs to Splunk HEC...")
-            sent_count = self.splunk_client.send_events_batch(
+            sent_count, successfully_sent_events = self.splunk_client.send_events_batch(
                 logs,
                 batch_size=self.config.batch_size
             )
+            
+            # Mark events as successfully sent ONLY after successful Splunk submission
+            if self.deduplicator and successfully_sent_events:
+                self.deduplicator.mark_events_as_sent(successfully_sent_events)
+                logger.debug(f"Marked {len(successfully_sent_events)} events as successfully sent to deduplication tracker")
             
             return sent_count
             
@@ -237,14 +256,36 @@ def forward_range(ctx, start_time, end_time, dry_run):
 @cli.command()
 @click.option('--interval', default=300, help='Interval between runs in seconds (default: 5 minutes)')
 @click.option('--lookback', default=600, help='Initial lookback period in seconds (default: 10 minutes)')
+@click.option('--enable-dedup/--disable-dedup', default=True, help='Enable/disable event deduplication (default: enabled)')
+@click.option('--dedup-buffer-seconds', default=60, help='Extra buffer seconds for deduplication time window (default: 60)')
 @click.pass_context
-def daemon(ctx, interval, lookback):
+def daemon(ctx, interval, lookback, enable_dedup, dedup_buffer_seconds):
     """Run in daemon mode, continuously forwarding logs.
     
     On first run, fetches logs from the last 'lookback' seconds.
     On subsequent runs, fetches only logs since the last successful run to prevent duplicates.
     """
     forwarder = ctx.obj['forwarder']
+    
+    # Initialize deduplicator if enabled
+    deduplicator = None
+    if enable_dedup:
+        # Calculate total tracking window: interval + overlap (30s) + user buffer
+        tracking_window = interval + 30 + dedup_buffer_seconds
+        deduplicator = EventDeduplicator(
+            tracking_window_seconds=tracking_window,
+            enabled=True
+        )
+        logger.info(f"Deduplication enabled: tracking window = {tracking_window}s (interval:{interval} + overlap:30 + buffer:{dedup_buffer_seconds})")
+        
+        # Update forwarder with deduplicator
+        forwarder.deduplicator = deduplicator
+        
+        # Show dedup stats
+        stats = deduplicator.get_stats()
+        logger.info(f"Deduplicator stats: tracking {stats['tracked_events_count']} events, state file: {stats['state_file']}")
+    else:
+        logger.info("Deduplication disabled")
     
     logger.info(f"Starting daemon mode: forwarding logs every {interval} seconds")
     logger.info(f"Initial lookback period: {lookback} seconds")
@@ -292,6 +333,43 @@ def daemon(ctx, interval, lookback):
         
         logger.info(f"Sleeping for {interval} seconds...")
         time.sleep(interval)
+
+
+@cli.command()
+@click.option('--clear', is_flag=True, help='Clear all deduplication state')
+@click.pass_context
+def dedup_stats(ctx, clear):
+    """Show deduplication statistics and optionally clear state."""
+    try:
+        # Initialize a deduplicator to read current state
+        deduplicator = EventDeduplicator(
+            tracking_window_seconds=3600,  # Default window for stats reading
+            enabled=True
+        )
+        
+        if clear:
+            deduplicator.clear_state()
+            click.echo("✅ Deduplication state cleared")
+            return
+        
+        stats = deduplicator.get_stats()
+        
+        click.echo("Deduplication Statistics:")
+        click.echo(f"  Status: {'Enabled' if stats['enabled'] else 'Disabled'}")
+        click.echo(f"  Tracking Window: {stats['tracking_window_seconds']} seconds")
+        click.echo(f"  Tracked Events: {stats['tracked_events_count']}")
+        click.echo(f"  State File: {stats['state_file']}")
+        
+        if stats['oldest_tracked_event']:
+            oldest = datetime.fromtimestamp(stats['oldest_tracked_event'], timezone.utc)
+            click.echo(f"  Oldest Event: {oldest}")
+        
+        if stats['newest_tracked_event']:
+            newest = datetime.fromtimestamp(stats['newest_tracked_event'], timezone.utc)
+            click.echo(f"  Newest Event: {newest}")
+        
+    except Exception as e:
+        click.echo(f"❌ Error reading deduplication stats: {str(e)}")
 
 
 @cli.command()
