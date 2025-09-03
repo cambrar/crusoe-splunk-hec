@@ -192,8 +192,8 @@ class CrusoeClient:
         try:
             logger.info(f"Fetching audit logs from {url} with params: {params}")
             
-            # Sign the request
-            auth_headers = self._sign_request("GET", url, params=params)
+            # Sign the request (without query params in signature)
+            auth_headers = self._sign_request("GET", url, params=None)
             headers = {**self.session.headers, **auth_headers}
             
             response = self.session.get(url, params=params, headers=headers, timeout=30)
