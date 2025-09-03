@@ -105,11 +105,11 @@ class CrusoeClient:
         else:
             http_path = full_path
         
-        # Canonicalize query parameters
+        # Canonicalize query parameters (URL-encoded for signature)
         if params and len(params) > 0:
-            # Sort parameters by name and format as key=value&key=value
+            # Sort parameters by name and URL-encode them
             sorted_params = sorted(params.items())
-            canonicalized_query_params = "&".join([f"{k}={v}" for k, v in sorted_params])
+            canonicalized_query_params = urlencode(sorted_params)
         else:
             canonicalized_query_params = ""
         
