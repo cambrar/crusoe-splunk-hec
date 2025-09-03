@@ -43,7 +43,6 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
 **Option 1: Access Key Authentication (Recommended)**
 - `CRUSOE_ACCESS_KEY_ID`: Your Crusoe Cloud access key ID
 - `CRUSOE_SECRET_ACCESS_KEY`: Your Crusoe Cloud secret access key
-- `CRUSOE_REGION`: AWS region for request signing (default: `us-east-1`)
 
 **Option 2: Token Authentication (Legacy)**
 - `CRUSOE_API_TOKEN`: Your Crusoe Cloud API token
@@ -80,6 +79,7 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
    # Add to your .env file
    CRUSOE_ACCESS_KEY_ID=your_access_key_id_here
    CRUSOE_SECRET_ACCESS_KEY=your_secret_access_key_here
+   CRUSOE_ORG_ID=your_organization_id_here
    ```
 
 #### API Token (Legacy Alternative)
@@ -92,8 +92,9 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
 #### Organization ID
 
 2. **Organization ID**:
-   - Available in the Crusoe Cloud Console
-   - Or retrieve via API: `GET /organizations`
+   - Available in the Crusoe Cloud Console under account settings
+   - Required for accessing audit logs via the API
+   - Format: UUID (e.g., `c594a031-5041-45ff-a72c-ba127c9884d1`)
 
 ### Setting up Splunk HEC
 
@@ -186,14 +187,27 @@ Logs are sent to Splunk in the following format:
 
 ```json
 {
-  "time": 1234567890.123,
+  "time": 1693737063.941,
   "event": {
-    "timestamp": "2024-01-01T12:00:00Z",
-    "action": "create",
-    "resource": "vm",
-    "user": "user@example.com",
-    "details": "Created VM instance 'vm-1234'",
-    // ... other Crusoe audit log fields
+    "action": "Create",
+    "action_detail": "",
+    "actor_id": "be34759e-fa6b-41e0-bbe6-9159516c9613",
+    "actor_email": "user@crusoeenergy.com",
+    "actor_type": "User",
+    "client_ip": "10.193.200.150:36338",
+    "end_time": "2025-09-03T15:11:03.941Z",
+    "error_message": "",
+    "locations": [],
+    "organization_id": "c594a031-5041-45ff-a72c-ba127c9884d1",
+    "organization_name": "crusoe-dx-lab",
+    "project_id": "",
+    "project_name": "",
+    "target_ids": [],
+    "target_names": ["API access"],
+    "target_type": "UserAccessToken",
+    "result": "OK",
+    "start_time": "2025-09-03T15:11:03.904Z",
+    "surface": "Console"
   },
   "sourcetype": "crusoe:audit",
   "source": "crusoe_api",
@@ -251,8 +265,9 @@ WantedBy=multi-user.target
 ### Common Issues
 
 1. **Authentication Errors**:
-   - Verify API tokens are correct and have appropriate permissions
-   - Check that organization ID is correct for Crusoe API
+   - Verify access key ID and secret access key are correct
+   - Check that organization ID is correct (must be UUID format)
+   - Ensure API keys have audit log access permissions
 
 2. **Network Connectivity**:
    - Ensure firewall rules allow outbound HTTPS traffic
@@ -281,11 +296,12 @@ logging.basicConfig(level=logging.DEBUG, ...)
 
 ### Crusoe Cloud Audit Logs API
 
-Based on the [official documentation](https://docs.crusoecloud.com/api/#tag/Audit-Logs/operation/getAuditLogs):
+Based on the [official documentation](https://docs.crusoecloud.com/reference/api/):
 
 - **Endpoint**: `GET /organizations/{organization_id}/audit-logs`
-- **Authentication**: Bearer token in Authorization header
+- **Authentication**: Custom HMAC-SHA256 signature method with access key/secret
 - **Parameters**: Various filters for time range, pagination, etc.
+- **Query Parameters**: Must be URL-encoded in signature generation
 
 ### Splunk HTTP Event Collector
 
