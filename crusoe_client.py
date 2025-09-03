@@ -96,9 +96,14 @@ class CrusoeClient:
         Returns:
             Dictionary of headers including Authorization and X-Crusoe-Timestamp
         """
-        # Parse URL to get the path
+        # Parse URL to get the path - extract the path after /v1alpha5/
         parsed_url = urlparse(url)
-        http_path = parsed_url.path
+        # Remove the base API version from the path for signature
+        full_path = parsed_url.path
+        if full_path.startswith('/v1alpha5/'):
+            http_path = full_path[10:]  # Remove '/v1alpha5/' prefix
+        else:
+            http_path = full_path
         
         # Canonicalize query parameters
         if params:
@@ -108,12 +113,14 @@ class CrusoeClient:
         else:
             canonicalized_query_params = ""
         
-        # Create timestamp in RFC3339 format
-        timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        # Create timestamp exactly like the working example
+        dt = datetime.now(timezone.utc).replace(microsecond=0)
+        timestamp = str(dt).replace(" ", "T")
         
-        # Create signature payload as per Crusoe documentation:
-        # http_path + "\n" + canonicalized_query_params + "\n" + http_verb + "\n" + timestamp + "\n"
-        payload = f"{http_path}\n{canonicalized_query_params}\n{method}\n{timestamp}\n"
+        # Create signature payload exactly like the working example:
+        # /v1alpha5/ + path + "\n" + canonicalized_query_params + "\n" + http_verb + "\n" + timestamp + "\n"
+        api_version = "/v1alpha5/"
+        payload = f"{api_version}{http_path}\n{canonicalized_query_params}\n{method}\n{timestamp}\n"
         
         # Decode the secret key from base64
         try:
@@ -166,7 +173,7 @@ class CrusoeClient:
         Raises:
             CrusoeAPIError: If API request fails
         """
-        url = f"{self.config.base_url}/projects/{self.config.project_id}/audit-logs"
+        url = f"{self.config.base_url}/organizations/{self.config.organization_id}/audit-logs"
         
         # Build query parameters
         params = {}

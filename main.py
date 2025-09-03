@@ -269,7 +269,7 @@ def config_check(ctx):
     
     click.echo("Configuration Check:")
     click.echo(f"  Crusoe API URL: {config.crusoe.base_url}")
-    click.echo(f"  Crusoe Project ID: {config.crusoe.project_id}")
+    click.echo(f"  Crusoe Org ID: {config.crusoe.organization_id}")
     
     # Show authentication method being used
     if config.crusoe.api_token:
