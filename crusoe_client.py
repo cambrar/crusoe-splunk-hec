@@ -166,7 +166,7 @@ class CrusoeClient:
         Raises:
             CrusoeAPIError: If API request fails
         """
-        url = f"{self.config.base_url}/organizations/{self.config.organization_id}/audit-logs"
+        url = f"{self.config.base_url}/projects/{self.config.project_id}/audit-logs"
         
         # Build query parameters
         params = {}

@@ -23,8 +23,9 @@ def create_crusoe_signature(access_key_id: str, secret_key: str, method: str, pa
     Returns:
         Tuple of (timestamp, authorization_header)
     """
-    # Create timestamp in RFC3339 format
-    timestamp = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Create timestamp in RFC3339 format like the documentation example
+    dt = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    timestamp = dt.isoformat()  # Keep the exact RFC3339 format
     
     # Create signature payload as per Crusoe documentation:
     # http_path + "\n" + canonicalized_query_params + "\n" + http_verb + "\n" + timestamp + "\n"

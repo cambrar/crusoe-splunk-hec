@@ -21,7 +21,7 @@ class CrusoeConfig(BaseModel):
         default="https://api.crusoecloud.com/v1alpha5",
         description="Crusoe Cloud API base URL"
     )
-    organization_id: str = Field(..., description="Organization ID for audit logs")
+    project_id: str = Field(..., description="Project ID for audit logs")
     region: str = Field(default="us-east-1", description="AWS region for signing requests")
     
     @classmethod
@@ -32,7 +32,7 @@ class CrusoeConfig(BaseModel):
             access_key_id=os.getenv("CRUSOE_ACCESS_KEY_ID"),
             secret_access_key=os.getenv("CRUSOE_SECRET_ACCESS_KEY"),
             base_url=os.getenv("CRUSOE_BASE_URL", "https://api.crusoecloud.com/v1alpha5"),
-            organization_id=os.getenv("CRUSOE_ORG_ID", ""),
+            project_id=os.getenv("CRUSOE_PROJECT_ID", ""),
             region=os.getenv("CRUSOE_REGION", "us-east-1")
         )
 
@@ -92,8 +92,8 @@ class AppConfig(BaseModel):
                 "(CRUSOE_ACCESS_KEY_ID + CRUSOE_SECRET_ACCESS_KEY) must be provided"
             )
         
-        if not self.crusoe.organization_id:
-            raise ValueError("CRUSOE_ORG_ID environment variable is required")
+        if not self.crusoe.project_id:
+            raise ValueError("CRUSOE_PROJECT_ID environment variable is required")
         if not self.splunk.hec_token:
             raise ValueError("SPLUNK_HEC_TOKEN environment variable is required")
         if not self.splunk.hec_url:
