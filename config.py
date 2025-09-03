@@ -13,9 +13,9 @@ class CrusoeConfig(BaseModel):
     """Configuration for Crusoe Cloud API."""
     
     # Support both token-based and key-based authentication
-    api_token: Optional[str] = Field(default=None, description="Crusoe Cloud API token (legacy)")
-    access_key_id: Optional[str] = Field(default=None, description="Crusoe Cloud access key ID")
-    secret_access_key: Optional[str] = Field(default=None, description="Crusoe Cloud secret access key")
+    api_token: Optional[str] = Field(default=None, description="Crusoe Cloud API token")
+    access_key_id: Optional[str] = Field(default=None, description="Crusoe Cloud access key ID (for AWS SigV4)")
+    secret_access_key: Optional[str] = Field(default=None, description="Crusoe Cloud secret access key (for AWS SigV4)")
     
     base_url: str = Field(
         default="https://api.crusoecloud.com/v1alpha5",
@@ -82,7 +82,7 @@ class AppConfig(BaseModel):
     
     def validate_config(self) -> None:
         """Validate that all required configuration is present."""
-        # Check Crusoe authentication - either token OR access key + secret
+        # Check Crusoe authentication - prefer token, fallback to access key + secret
         has_token = bool(self.crusoe.api_token)
         has_keys = bool(self.crusoe.access_key_id and self.crusoe.secret_access_key)
         
