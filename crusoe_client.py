@@ -106,7 +106,7 @@ class CrusoeClient:
             http_path = full_path
         
         # Canonicalize query parameters
-        if params:
+        if params and len(params) > 0:
             # Sort parameters by name and format as key=value&key=value
             sorted_params = sorted(params.items())
             canonicalized_query_params = "&".join([f"{k}={v}" for k, v in sorted_params])
@@ -192,8 +192,8 @@ class CrusoeClient:
         try:
             logger.info(f"Fetching audit logs from {url} with params: {params}")
             
-            # Sign the request (without query params in signature)
-            auth_headers = self._sign_request("GET", url, params=None)
+            # Sign the request (include query params in signature when present)
+            auth_headers = self._sign_request("GET", url, params=params)
             headers = {**self.session.headers, **auth_headers}
             
             response = self.session.get(url, params=params, headers=headers, timeout=30)
