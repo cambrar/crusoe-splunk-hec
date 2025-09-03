@@ -143,4 +143,4 @@ def test_crusoe_endpoints():
         print(f"⚠️  Mixed results - check individual endpoint errors above.")
 
 if __name__ == "__main__":
-    test_api_endpoints()
+    test_crusoe_endpoints()
