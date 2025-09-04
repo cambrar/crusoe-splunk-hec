@@ -7,6 +7,9 @@ A Python tool for fetching audit logs from the [Crusoe Cloud API](https://docs.c
 - ✅ Fetch audit logs from Crusoe Cloud API with pagination support
 - ✅ Send logs to Splunk HEC in configurable batches
 - ✅ Multiple operation modes: one-time, recent logs, time range, and daemon mode
+- ✅ **Advanced Deduplication**: Time-window hash tracking with disk persistence
+- ✅ **Two-Phase Deduplication**: Only marks events as sent after successful Splunk delivery
+- ✅ **Restart-Safe**: Maintains deduplication state across daemon restarts
 - ✅ Comprehensive error handling and retry logic
 - ✅ Health checks for both Crusoe API and Splunk HEC
 - ✅ Dry-run mode for testing
@@ -150,10 +153,26 @@ python main.py forward-range --start-time "2024-01-01T00:00:00Z" --dry-run
 ```bash
 # Run continuously, forwarding logs every 5 minutes (300 seconds)
 # Initial lookback of 10 minutes, then only new logs since last run
+# Deduplication enabled by default
 python main.py daemon
 
 # Custom interval and initial lookback period
 python main.py daemon --interval 600 --lookback 1800
+
+# Custom deduplication buffer (extends time window for hash tracking)
+python main.py daemon --interval 300 --dedup-buffer-seconds 120
+
+# Disable deduplication entirely
+python main.py daemon --disable-dedup --interval 300
+```
+
+#### Deduplication Management
+```bash
+# Check deduplication statistics
+python main.py dedup-stats
+
+# Clear deduplication state (fresh start)
+python main.py dedup-stats --clear
 ```
 
 ### Example Workflow
@@ -179,8 +198,84 @@ python main.py daemon --interval 600 --lookback 1800
 3. **Continuous Operation**:
    ```bash
    # Run as a daemon, checking every 10 minutes with 30 minute initial lookback
+   # Deduplication enabled with default 60s buffer
    python main.py daemon --interval 600 --lookback 1800
+   
+   # For high-frequency environments, increase deduplication buffer
+   python main.py daemon --interval 300 --lookback 900 --dedup-buffer-seconds 180
    ```
+
+## Deduplication System
+
+The tool includes an advanced deduplication system to prevent duplicate logs from being sent to Splunk, even across daemon restarts and partial failures.
+
+### How It Works
+
+1. **Two-Phase Process**:
+   - **Phase 1**: Filter duplicates based on existing hash state (read-only)
+   - **Phase 2**: Mark events as "sent" only after successful Splunk delivery
+
+2. **Time-Window Hash Tracking**:
+   - Generates SHA256 hashes based on key event fields (`start_time`, `actor_id`, `action`, etc.)
+   - Maintains hashes for a calculated time window: `interval + 30s_overlap + buffer`
+   - Automatically cleans up old hashes beyond the time window
+
+3. **Disk Persistence**:
+   - State saved to `~/.crusoe_dedup_state.json`
+   - **Critical**: Hashes only written to disk after successful Splunk submission
+   - Atomic file operations prevent corruption
+   - Restart-safe: daemon loads previous state on startup
+
+### Configuration Options
+
+```bash
+# Enable/disable deduplication (enabled by default)
+--enable-dedup / --disable-dedup
+
+# Set buffer time for hash tracking window (default: 60 seconds)
+--dedup-buffer-seconds SECONDS
+```
+
+### Time Window Calculation
+
+**Total Hash Tracking Window = `daemon_interval` + `30` (overlap) + `dedup_buffer_seconds`**
+
+**Examples**:
+- Interval 300s + Buffer 60s = **390 second** tracking window
+- Interval 600s + Buffer 120s = **750 second** tracking window
+
+### Deduplication Guarantees
+
+✅ **Zero Duplicates**: No duplicate events sent to Splunk within tracking window  
+✅ **Failure Safety**: Failed events will be retried (not marked as sent)  
+✅ **Restart Safety**: State persists across daemon restarts  
+✅ **Partial Failure Handling**: Only successful events marked as sent  
+
+### Monitoring Deduplication
+
+```bash
+# View current deduplication statistics
+python main.py dedup-stats
+
+# Sample output:
+# Deduplication Statistics:
+#   Status: Enabled
+#   Tracking Window: 390 seconds
+#   Tracked Events: 1247
+#   State File: /home/user/.crusoe_dedup_state.json
+#   Oldest Event: 2024-01-15 10:23:45+00:00
+#   Newest Event: 2024-01-15 10:29:15+00:00
+
+# Clear all deduplication state (fresh start)
+python main.py dedup-stats --clear
+```
+
+### When to Disable Deduplication
+
+Consider disabling deduplication if:
+- You have external deduplication mechanisms in Splunk
+- Memory/storage constraints are critical
+- You need maximum throughput without safety guarantees
 
 ## Log Format
 
@@ -253,7 +348,7 @@ Type=simple
 User=your-user
 WorkingDirectory=/path/to/cursor-splunk-hec
 Environment=PATH=/path/to/venv/bin
-ExecStart=/path/to/venv/bin/python main.py daemon --interval 300 --lookback 900
+ExecStart=/path/to/venv/bin/python main.py daemon --interval 300 --lookback 900 --dedup-buffer-seconds 120
 Restart=always
 RestartSec=10
 
@@ -284,6 +379,12 @@ WantedBy=multi-user.target
    - Verify the time range includes periods with activity
    - Check that audit logging is enabled in Crusoe Cloud
    - Ensure organization ID is correct
+
+5. **Duplicate Logs in Splunk**:
+   - Check if deduplication is enabled: `python main.py dedup-stats`
+   - Verify time window is appropriate for your daemon interval
+   - Consider increasing `--dedup-buffer-seconds` for high-frequency events
+   - Clear deduplication state if needed: `python main.py dedup-stats --clear`
 
 ### Debug Mode
 
